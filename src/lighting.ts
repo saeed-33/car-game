@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
 export function setupLighting(scene: THREE.Scene) {
-    const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+    const ambientLight = new THREE.AmbientLight(0x404060, 0.05);
     scene.add(ambientLight);
 
-    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3d5c3d, 0.6);
+    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3d5c3d, 0.1);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfff5e6, 2);
+    const sunLight = new THREE.DirectionalLight(0xfff5e6, 0.1);
     sunLight.position.set(50, 100, 50);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
