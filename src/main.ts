@@ -1,7 +1,7 @@
 import { setupScene } from './sceneSetup';
 import { setupLighting } from './lighting';
 import { createEnvironment } from './environment';
-import { loadCar } from './carloader';
+import { loadCar } from './carLoader';
 import { createStreetLights } from './streetLights';
 
 // 1. Import OrbitControls
