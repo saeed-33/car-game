@@ -17,7 +17,7 @@ export class TreeSystem {
         this.spawnModel('/models/quaternius_cc0-traffic-light-1428.glb', new THREE.Vector3(6, 0, -40), 9, -Math.PI / 2);
         
         // 3. Bench: Much larger scale (changed from 20 to 40), rotated to face the road
-        this.spawnModel('/models/manseok_kim-chair-2119.glb', new THREE.Vector3(-8, 0, -60), 40, Math.PI / 2);
+        this.spawnModel('/models/manseok_kim-chair-2119.glb', new THREE.Vector3(-8, 0, -60), 20, Math.PI / 2);
         
         // 4. Another Rock
         this.spawnModel('/models/quaternius_cc0-snowy-rock-1313.glb', new THREE.Vector3(8, 0, -80), 3, Math.PI);
