@@ -4,6 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 export interface Obstacle {
     mesh: THREE.Group;
     isHit: boolean;
+    velocity: THREE.Vector3;
+    laneOffset: number;
 }
 
 export class ObstacleSystem {
@@ -11,52 +13,44 @@ export class ObstacleSystem {
     public obstacles: Obstacle[] = [];
 
     constructor(private worldGroup: THREE.Group) {
-        // Spawn 12 cones (a good amount so the screen isn't entirely flooded)
-        for (let i = 0; i < 12; i++) {
-            this.spawnCone(new THREE.Vector3(
-                this.getRandomLane(), 
-                0, 
-                -50 - (i * 60) // Initial safe spacing: one cone every 60 units
-            ));
-        }
-    }
-
-    // LOGICAL FIX 1: Strict Lanes!
-    // Instead of completely random X values, cones can only spawn in 3 distinct lanes.
-    // This ensures there is almost always a gap for the car to drive through.
-    private getRandomLane(): number {
-        const lanes = [-2.5, 0, 2.5]; // Left lane, Center lane, Right lane
-        const randomIndex = Math.floor(Math.random() * lanes.length);
-        return lanes[randomIndex]??0;
-    }
-
-    private spawnCone(position: THREE.Vector3) {
         this.loader.load('/models/pixellabs-traffic-cone-4223.glb', (gltf) => {
-            const model = gltf.scene;
-            model.position.copy(position);
+            const baseModel = gltf.scene;
+            baseModel.scale.set(1.3, 1.3, 1.3);
             
-            // INCREASED SCALE: 1.3 looks like a proper highway cone!
-            model.scale.set(1.3, 1.3, 1.3); 
-            
-            model.traverse((child) => {
+            baseModel.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
                 }
             });
 
-            this.obstacles.push({ mesh: model, isHit: false });
-            this.worldGroup.add(model);
+            for (let i = 0; i < 20; i++) {
+                const clone = baseModel.clone();
+                const laneX = this.getRandomLane();
+                
+                clone.position.set(laneX, 0, -30 - (i * 60)); 
+                
+                this.obstacles.push({ 
+                    mesh: clone, 
+                    isHit: false, 
+                    velocity: new THREE.Vector3(0,0,0), 
+                    laneOffset: laneX 
+                });
+                
+                this.worldGroup.add(clone);
+            }
         });
     }
 
-    public update(cameraZ: number, worldZ: number, progress: number) {
-        // DYNAMIC DIFFICULTY: 
-        // Start at 60 units apart. Shrink to 20 units apart at the very end of the game.
+    private getRandomLane(): number {
+        const lanes = [-2.5, 0, 2.5];
+        const randomIndex = Math.floor(Math.random() * lanes.length);
+        return lanes[randomIndex] as number; 
+    }
+
+    public update(cameraZ: number, worldZ: number, progress: number, delta: number) {
         const currentSpacing = THREE.MathUtils.lerp(60, 20, progress);
 
-        // LOGICAL FIX 3: Chain Spawning!
-        // We find the cone that is currently the FURTHEST away...
         let furthestZ = 0;
         if (this.obstacles.length > 0) {
             furthestZ = Math.min(...this.obstacles.map(o => o.mesh.position.z));
@@ -66,31 +60,35 @@ export class ObstacleSystem {
             const absoluteZ = worldZ + obs.mesh.position.z;
             
             if (absoluteZ > cameraZ + 20) {
-                // ...and we place the newly recycled cone exactly `currentSpacing` behind it!
-                // This guarantees they NEVER overlap on the Z axis.
                 obs.mesh.position.z = furthestZ - currentSpacing; 
-                obs.mesh.position.x = this.getRandomLane(); 
+                obs.laneOffset = this.getRandomLane(); 
                 this.resetCone(obs);
-                
-                // Update furthestZ so if multiple cones recycle at once, they form a perfect line
                 furthestZ = obs.mesh.position.z; 
                 
             } else if (absoluteZ < cameraZ - 800) {
-                // Reverse edge-case
                 obs.mesh.position.z += 800;
-                obs.mesh.position.x = this.getRandomLane();
+                obs.laneOffset = this.getRandomLane();
                 this.resetCone(obs);
             }
 
+            if (!obs.isHit) {
+                obs.mesh.position.x = obs.laneOffset;
+            }
+
             if (obs.isHit) {
-                // Animate it falling over backwards
-                obs.mesh.rotation.x = THREE.MathUtils.lerp(obs.mesh.rotation.x, -Math.PI / 2, 0.1);
+                obs.velocity.y -= 40 * delta; 
+                obs.mesh.position.addScaledVector(obs.velocity, delta);
+                obs.mesh.rotation.x += 10 * delta;
+                obs.mesh.rotation.y += 15 * delta;
+                obs.mesh.rotation.z += 5 * delta;
             }
         });
     }
 
     private resetCone(obs: Obstacle) {
         obs.isHit = false;
-        obs.mesh.rotation.x = 0; 
+        obs.mesh.rotation.set(0, 0, 0); 
+        obs.mesh.position.y = 0; 
+        obs.velocity.set(0, 0, 0); 
     }
 }

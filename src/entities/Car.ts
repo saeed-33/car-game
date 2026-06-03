@@ -6,11 +6,11 @@ export class Car {
     public mesh: THREE.Group | null = null;
     
     public speed: number = 0;
-    public maxSpeed: number = 40; // Increased max speed for more fun!
-    public maxReverseSpeed: number = 10;
-    public acceleration: number = 20; // Increased acceleration
+    public maxSpeed: number = 60; 
+    public maxReverseSpeed: number = 15;
+    public acceleration: number = 60; 
     public positionX: number = 0;
-    public steeringSpeed: number = 8;
+    public steeringSpeed: number = 14;
 
     constructor(private scene: THREE.Scene, private inputSystem: InputSystem) {
         this.loadModel();
@@ -34,23 +34,12 @@ export class Car {
         });
     }
 
-    // ==========================================
-    // NEW: Get the 3D Hitbox of the car!
-    // ==========================================
-       public getHitbox(): THREE.Box3 | null {
+    public getHitbox(): THREE.Box3 | null {
         if (!this.mesh) return null;
-        
-        // 1. Get the exact mathematical box of the 3D model
         const box = new THREE.Box3().setFromObject(this.mesh);
-        
-        // 2. Shrink it so the player only crashes if they hit the MAIN body of the car
         const size = new THREE.Vector3();
         box.getSize(size);
-        
-        // Passing negative values shrinks the box. 
-        // We are shrinking the Width (X) and Length (Z) by 20% on all sides!
         box.expandByVector(new THREE.Vector3(-size.x * 0.2, 0, -size.z * 0.2));
-        
         return box;
     }
 
