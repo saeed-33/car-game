@@ -5,7 +5,7 @@ export class GameScene {
     public camera: THREE.PerspectiveCamera;
     public renderer: THREE.WebGLRenderer;
     public worldGroup: THREE.Group;
-private isTopDownView: boolean = false;
+    public cameraMode: 'chase' | 'topDown' | 'driver' = 'chase';
     constructor() {
         this.scene = new THREE.Scene();
         this.scene.fog = new THREE.Fog(0x87ceeb, 30, 100);
@@ -38,16 +38,12 @@ this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHe
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 public toggleCamera() {
-        this.isTopDownView = !this.isTopDownView;
-        
-        if (this.isTopDownView) {
-            // NEW: Drone View (High up, looking down at the car)
-            this.camera.position.set(0, 25, 8);
-            this.camera.lookAt(0, 0, -10);
+        if (this.cameraMode === 'chase') {
+            this.cameraMode = 'topDown';
+        } else if (this.cameraMode === 'topDown') {
+            this.cameraMode = 'driver';
         } else {
-            // NEW: Action Chase Cam
-            this.camera.position.set(0, 2.5, 6); 
-            this.camera.lookAt(0, 1, -15);
+            this.cameraMode = 'chase';
         }
     }
     public render() {

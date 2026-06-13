@@ -1,29 +1,19 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { RoadSystem } from './RoadSystem'; // IMPORT THIS!
 
 export class TreeSystem {
     private loader = new GLTFLoader();
-    // We will save the original X position so when it recycles, it stays on the correct side of the road
-    private props: { mesh: THREE.Group, originalX: number }[] = []; 
+    private props: { mesh: THREE.Group, lateralOffset: number, trackZ: number }[] = []; 
     private recycleDistance = 150; 
+    private readonly minRoadsideOffset = RoadSystem.ROAD_EDGE_OFFSET + 5;
 
     constructor(private worldGroup: THREE.Group) {
-        // Syntax: spawnModel(path, position, scale, rotation in radians)
-        
-        // 1. Rock: Much smaller scale (changed from 10 to 4)
-        this.spawnModel('/models/quaternius_cc0-snowy-rock-1313.glb', new THREE.Vector3(-7, 0, -20), 4, 0);
-        
-        // 2. Traffic Light: Adjusted scale, rotated 90 degrees (-Math.PI / 2) to face the road
-        this.spawnModel('/models/quaternius_cc0-traffic-light-1428.glb', new THREE.Vector3(6, 0, -40), 9, -Math.PI / 2);
-        
-        // 3. Bench: Much larger scale (changed from 20 to 40), rotated to face the road
-        this.spawnModel('/models/manseok_kim-chair-2119.glb', new THREE.Vector3(-8, 0, -60), 20, Math.PI / 2);
-        
-        // 4. Another Rock
-        this.spawnModel('/models/quaternius_cc0-snowy-rock-1313.glb', new THREE.Vector3(8, 0, -80), 3, Math.PI);
-        
-        // 5. Another Traffic Light on the left side
-        this.spawnModel('/models/quaternius_cc0-traffic-light-1428.glb', new THREE.Vector3(-6, 0, -100), 9, Math.PI / 2);
+        this.spawnModel('/models/quaternius_cc0-snowy-rock-1313.glb', new THREE.Vector3(-15, 0, -20), 4, 0);
+        this.spawnModel('/models/quaternius_cc0-traffic-light-1428.glb', new THREE.Vector3(15, 0, -40), 9, -Math.PI / 2);
+        this.spawnModel('/models/manseok_kim-chair-2119.glb', new THREE.Vector3(-18, 0, -60), 40, Math.PI / 2);
+        this.spawnModel('/models/quaternius_cc0-snowy-rock-1313.glb', new THREE.Vector3(17, 0, -80), 3, Math.PI);
+        this.spawnModel('/models/quaternius_cc0-traffic-light-1428.glb', new THREE.Vector3(-15, 0, -100), 9, Math.PI / 2);
     }
 
     private spawnModel(path: string, position: THREE.Vector3, scale: number, rotationY: number) {
@@ -31,8 +21,6 @@ export class TreeSystem {
             const model = gltf.scene;
             model.position.copy(position);
             model.scale.set(scale, scale, scale);
-            
-            // Apply the rotation!
             model.rotation.y = rotationY; 
             
             model.traverse((child) => {
@@ -42,25 +30,33 @@ export class TreeSystem {
                 }
             });
 
-            this.props.push({ mesh: model, originalX: position.x }); 
+            this.props.push({ mesh: model, lateralOffset: this.keepOffRoad(position.x), trackZ: position.z }); 
             this.worldGroup.add(model);
         });
     }
 
-public update(cameraZ: number, worldZ: number) {
+    public update(_cameraZ: number, progressZ: number) {
+        const referenceZ = RoadSystem.START_LINE_Z - progressZ;
+
         this.props.forEach(prop => {
-            const absoluteZ = worldZ + prop.mesh.position.z;
+            const distanceAhead = referenceZ - prop.trackZ;
             
-            if (absoluteZ > cameraZ + 30) {
-                // Driving Forward: Recycle to the front
-                prop.mesh.position.z -= this.recycleDistance; 
-                prop.mesh.position.x = prop.originalX + (Math.random() - 0.5) * 2; 
-                
-            } else if (absoluteZ < cameraZ - this.recycleDistance + 30) {
-                // Driving Backward: Recycle to the back!
-                prop.mesh.position.z += this.recycleDistance; 
-                prop.mesh.position.x = prop.originalX + (Math.random() - 0.5) * 2; 
+            if (distanceAhead < -30) {
+                prop.trackZ -= this.recycleDistance; 
+                prop.lateralOffset = this.keepOffRoad(prop.lateralOffset + (Math.random() - 0.5) * 2);
+            } else if (distanceAhead > this.recycleDistance - 30) {
+                prop.trackZ += this.recycleDistance; 
+                prop.lateralOffset = this.keepOffRoad(prop.lateralOffset + (Math.random() - 0.5) * 2);
             }
+
+            const local = RoadSystem.trackToLocal(prop.trackZ, prop.lateralOffset, referenceZ);
+            prop.mesh.position.x = local.x;
+            prop.mesh.position.z = local.z;
         });
+    }
+
+    private keepOffRoad(x: number): number {
+        const side = x >= 0 ? 1 : -1;
+        return side * Math.max(Math.abs(x), this.minRoadsideOffset);
     }
 }
