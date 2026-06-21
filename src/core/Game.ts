@@ -5,7 +5,9 @@ import { LightingSystem } from '../systems/LightingSystem';
 import { TreeSystem } from '../systems/TreeSystem';
 import { RoadSystem } from '../systems/RoadSystem';
 import { ObstacleSystem } from '../systems/ObstacleSystem';
-import { UI } from '../systems/UI';
+import { PowerUpSystem } from '../systems/PowerUpSystem'; 
+import { RadioSystem } from '../systems/RadioSystem'; 
+import { AVAILABLE_CARS, UI } from '../systems/UI';
 import type { GameSettings } from '../systems/UI';
 import { Car } from '../entities/Car';
 
@@ -17,6 +19,8 @@ export class Game {
     private treeSystem: TreeSystem;
     private roadSystem: RoadSystem;
     private obstacleSystem: ObstacleSystem;
+    private powerUpSystem: PowerUpSystem; 
+    private radioSystem: RadioSystem; 
     private ui: UI;
     private car: Car;
 
@@ -38,13 +42,21 @@ export class Game {
         this.roadSystem = new RoadSystem(this.gameScene.worldGroup);
         this.treeSystem = new TreeSystem(this.gameScene.worldGroup);
         this.obstacleSystem = new ObstacleSystem(this.gameScene.worldGroup);
+        this.powerUpSystem = new PowerUpSystem(this.gameScene.worldGroup); 
 
         this.car = new Car(this.gameScene.scene, this.inputSystem);
 
-        this.ui = new UI(
+        this.radioSystem = new RadioSystem((trackName) => {
+            this.ui.updateRadioName(trackName);
+        });
+
+     this.ui = new UI(
             () => this.gameScene.toggleCamera(),
             (pressed) => this.inputSystem.setVirtualAction('throttle', pressed),
-            (settings) => this.startRace(settings)
+            (pressed) => this.inputSystem.setVirtualAction('reverse', pressed), // NEW
+            (pressed) => this.inputSystem.setVirtualAction('brake', pressed),   // NEW
+            (settings) => this.startRace(settings),
+            () => this.radioSystem.nextTrack() 
         );
     }
 
@@ -69,6 +81,10 @@ export class Game {
 
         if (this.inputSystem.wasActionPressed('camera')) {
             this.gameScene.toggleCamera();
+        }
+          // --- NEW: Check for Radio keyboard press ---
+        if (this.inputSystem.wasActionPressed('radio')) {
+            this.radioSystem.nextTrack();
         }
 
         // 1. UPDATE TIMERS & SCORE
@@ -97,6 +113,7 @@ export class Game {
         this.roadSystem.update(camZ, this.trackProgress);
         this.treeSystem.update(camZ, this.trackProgress);
         this.obstacleSystem.update(camZ, this.trackProgress, progress, delta); 
+        this.powerUpSystem.update(camZ, this.trackProgress, delta);
 
         if (this.trackProgress >= RoadSystem.COURSE_LENGTH) {
             this.triggerGameOver('FINISH!');
@@ -106,6 +123,21 @@ export class Game {
         // 3. COLLISION DETECTION
         const carHitbox = this.car.getHitbox();
         if (carHitbox) {
+            
+            // Power-Up Collisions
+            this.powerUpSystem.powerUps.forEach(pu => {
+                if (!pu.isHit) {
+                    const puHitbox = new THREE.Box3().setFromObject(pu.mesh);
+                    if (carHitbox.intersectsBox(puHitbox)) {
+                        pu.isHit = true;
+                        pu.mesh.visible = false; 
+                        if (pu.type === 'turbo') this.car.activateTurbo(5);
+                        if (pu.type === 'shield') this.car.activateShield(10);
+                    }
+                }
+            });
+
+            // Obstacle (Cone) Collisions
             this.obstacleSystem.obstacles.forEach(obs => {
                 if (!obs.isHit) {
                     const coneHitbox = new THREE.Box3().setFromObject(obs.mesh);
@@ -122,11 +154,14 @@ export class Game {
                             -this.car.speed * 0.5       
                         );
 
-                        this.car.speed *= 0.2; 
-                        this.conesHit++;
-                        this.distanceScore -= 500; 
-                        
-                        if (this.distanceScore < 0) this.distanceScore = 0; 
+                        // Only apply penalty if Shield is NOT active
+                        if (!this.car.isShieldActive) {
+                            this.car.speed *= 0.2; 
+                            this.conesHit++;
+                            this.distanceScore -= 500; 
+                            
+                            if (this.distanceScore < 0) this.distanceScore = 0; 
+                        }
                     }
                 }
             });
@@ -165,17 +200,30 @@ export class Game {
         }
 
         // 5. RENDER
-        this.ui.updateStats(this.timeLeft, this.distanceScore, this.conesHit, this.car.forwardSpeed);
+        this.ui.updateStats(this.timeLeft, this.distanceScore, this.conesHit, this.car.forwardSpeed, this.car.isTurboActive, this.car.isShieldActive);
         this.ui.updateMap(this.trackProgress, carX, this.car.mesh?.position.z ?? 3);
         this.gameScene.render();
     }
 
-    private startRace(settings: GameSettings) {
+    private async startRace(settings: GameSettings) {
         this.inputSystem.setBindings(settings.bindings);
-        this.car.setColor(settings.carColor);
         RoadSystem.setRouteVariant(settings.routeId);
+        
+        // Setup Volumes
+        this.car.setSfxVolume(settings.sfxVolume);
+        this.radioSystem.setVolume(settings.musicVolume);
+
+        // Await the specific car model chosen!
+          const selectedCarDef = AVAILABLE_CARS.find(c => c.path === settings.carModel) || AVAILABLE_CARS[0]!;
+        await this.car.initCar(settings.carModel, settings.carColor, selectedCarDef.scale, selectedCarDef.rotationY, selectedCarDef.offsetY, selectedCarDef.frontWheels,  selectedCarDef.rearWheels  );
+
+        this.car.initSounds(); 
+        this.radioSystem.init();
+        
         this.clock.getDelta();
         this.isRaceStarted = true;
+
+        
     }
 
     private triggerGameOver(title = 'TIME IS UP!') {
