@@ -1,12 +1,15 @@
-export type ControlAction = 'throttle' | 'brake' | 'left' | 'right' | 'camera';
+// --- START OF FILE InputSystem.ts ---
+export type ControlAction = 'throttle' | 'reverse' | 'brake' | 'left' | 'right' | 'camera' | 'radio';
 export type ControlBindings = Record<ControlAction, string>;
 
 export const DEFAULT_CONTROL_BINDINGS: ControlBindings = {
     throttle: 'KeyW',
-    brake: 'KeyS',
+    reverse: 'KeyS',
+    brake: 'Space',
     left: 'KeyA',
     right: 'KeyD',
-    camera: 'KeyC'
+    camera: 'KeyC',
+    radio: 'KeyR'
 };
 
 export class InputSystem {
@@ -20,19 +23,11 @@ export class InputSystem {
     }
 
     private init() {
-        window.addEventListener('keydown', (e) => {
-            this.keys[e.code] = true;
-        });
-
-        window.addEventListener('keyup', (e) => {
-            this.keys[e.code] = false;
-        });
+        window.addEventListener('keydown', (e) => { this.keys[e.code] = true; });
+        window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     }
 
-    // Other systems can call this to check if a key is pressed
-    public isKeyPressed(code: string): boolean {
-        return !!this.keys[code];
-    }
+    public isKeyPressed(code: string): boolean { return !!this.keys[code]; }
 
     public isActionPressed(action: ControlAction): boolean {
         return !!this.virtualActions[action] || this.isKeyPressed(this.bindings[action]);
@@ -45,15 +40,7 @@ export class InputSystem {
         return pressed && !wasPressed;
     }
 
-    public setBindings(bindings: ControlBindings) {
-        this.bindings = { ...bindings };
-    }
-
-    public setVirtualKey(code: string, pressed: boolean) {
-        this.keys[code] = pressed;
-    }
-
-    public setVirtualAction(action: ControlAction, pressed: boolean) {
-        this.virtualActions[action] = pressed;
-    }
+    public setBindings(bindings: ControlBindings) { this.bindings = { ...bindings }; }
+    public setVirtualKey(code: string, pressed: boolean) { this.keys[code] = pressed; }
+    public setVirtualAction(action: ControlAction, pressed: boolean) { this.virtualActions[action] = pressed; }
 }

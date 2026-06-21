@@ -1,3 +1,4 @@
+// --- START OF FILE UI.ts ---
 import * as THREE from 'three';
 import { RoadSystem } from './RoadSystem';
 import { DEFAULT_CONTROL_BINDINGS } from './InputSystem';
@@ -5,14 +6,33 @@ import type { ControlAction, ControlBindings } from './InputSystem';
 
 export interface GameSettings {
     routeId: string;
+    carModel: string;
     carColor: string;
+    sfxVolume: number;
+    musicVolume: number;
     bindings: ControlBindings;
 }
 
 const SETTINGS_STORAGE_KEY = 'traffic-game-settings';
 
+export const AVAILABLE_CARS = [
+    { id: 'default', name: 'Sports Car', path: '/models/car.glb', scale: 1.0, rotationY: 0, offsetY: 0.8 },
+    {
+        id: '1', name: 'hyundai', path: '/models/suzuki_carry_minivan.glb', scale: 0.008, rotationY: -3 * Math.PI / 4, offsetY: 0.8, frontWheels: ['Object_4', 'Object_5'], // <-- Change these to the real names from the viewer
+        rearWheels: ['Object_6', 'Object_7']
+    },
+    {
+        id: '2', name: 'mini', path: '/models/mitsubishi_minicab_2005.glb', scale: 0.5, rotationY: -Math.PI / 2, offsetY: 0.8, frontWheels: ['Object_4', 'Object_5'], // <-- Change these to the real names from the viewer
+        rearWheels: ['Object_6', 'Object_7']
+    },
+
+
+    // You can add more cars here later! example:
+    // { id: 'suv', name: 'SUV Offroader', path: '/models/suv.glb' }
+];
+
 function isControlAction(value: string): value is ControlAction {
-    return value === 'throttle' || value === 'brake' || value === 'left' || value === 'right' || value === 'camera';
+    return ['throttle', 'reverse', 'brake', 'left', 'right', 'camera', 'radio'].includes(value);
 }
 
 export class UI {
@@ -20,413 +40,211 @@ export class UI {
     private scoreLabel!: HTMLElement;
     private hitsLabel!: HTMLElement;
     private speedLabel!: HTMLElement;
+    private buffLabel!: HTMLElement;
+    private radioLabel!: HTMLButtonElement;
     private mapCanvas!: HTMLCanvasElement;
     private mapContext!: CanvasRenderingContext2D;
 
     constructor(
         private onCameraToggle: () => void,
         private onGasChange: (pressed: boolean) => void,
-        private onStart: (settings: GameSettings) => void
+        private onReverseChange: (pressed: boolean) => void,
+        private onBrakeChange: (pressed: boolean) => void,
+        private onStart: (settings: GameSettings) => void,
+        private onRadioNext: () => void
     ) {
         this.initHUD();
         this.showRouteSelect();
     }
 
     private initHUD() {
+        // ... (Camera Toggle Button)
         const toggleBtn = document.createElement('button');
         toggleBtn.innerText = 'Toggle Camera';
         toggleBtn.style.position = 'absolute';
         toggleBtn.style.bottom = '20px';
         toggleBtn.style.left = '20px';
         toggleBtn.style.padding = '10px 15px';
-        toggleBtn.style.fontSize = '14px';
-        toggleBtn.style.fontWeight = 'bold';
-        toggleBtn.style.cursor = 'pointer';
         toggleBtn.style.backgroundColor = '#111';
         toggleBtn.style.color = '#fff';
-        toggleBtn.style.border = '2px solid #fff';
-        toggleBtn.style.borderRadius = '8px';
         toggleBtn.onclick = () => this.onCameraToggle();
         document.body.appendChild(toggleBtn);
 
-        const gasBtn = document.createElement('button');
-        gasBtn.innerText = 'GAS';
-        gasBtn.style.position = 'absolute';
-        gasBtn.style.bottom = '20px';
-        gasBtn.style.right = '20px';
-        gasBtn.style.width = '105px';
-        gasBtn.style.height = '105px';
-        gasBtn.style.borderRadius = '50%';
-        gasBtn.style.fontSize = '22px';
-        gasBtn.style.fontWeight = 'bold';
-        gasBtn.style.cursor = 'pointer';
-        gasBtn.style.backgroundColor = '#1f8f3a';
-        gasBtn.style.color = '#fff';
-        gasBtn.style.border = '3px solid #fff';
-        gasBtn.style.touchAction = 'none';
+        // CREATE PEDALS
+        const createPedal = (text: string, color: string, activeColor: string, right: string, bottom: string, callback: (p: boolean) => void) => {
+            const btn = document.createElement('button');
+            btn.innerText = text;
+            btn.style.position = 'absolute';
+            btn.style.bottom = bottom;
+            btn.style.right = right;
+            btn.style.width = '80px';
+            btn.style.height = '80px';
+            btn.style.borderRadius = '50%';
+            btn.style.fontSize = '16px';
+            btn.style.fontWeight = 'bold';
+            btn.style.backgroundColor = color;
+            btn.style.color = '#fff';
+            btn.style.touchAction = 'none';
 
-        const setGas = (pressed: boolean) => {
-            gasBtn.style.transform = pressed ? 'scale(0.94)' : 'scale(1)';
-            gasBtn.style.backgroundColor = pressed ? '#2ebf50' : '#1f8f3a';
-            this.onGasChange(pressed);
+            const setPressed = (pressed: boolean) => {
+                btn.style.transform = pressed ? 'scale(0.94)' : 'scale(1)';
+                btn.style.backgroundColor = pressed ? activeColor : color;
+                callback(pressed);
+            };
+
+            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); setPressed(true); });
+            btn.addEventListener('pointerup', () => setPressed(false));
+            btn.addEventListener('pointercancel', () => setPressed(false));
+            btn.addEventListener('pointerleave', () => setPressed(false));
+            document.body.appendChild(btn);
         };
 
-        gasBtn.addEventListener('pointerdown', (event) => {
-            event.preventDefault();
-            gasBtn.setPointerCapture(event.pointerId);
-            setGas(true);
-        });
-        gasBtn.addEventListener('pointerup', () => setGas(false));
-        gasBtn.addEventListener('pointercancel', () => setGas(false));
-        gasBtn.addEventListener('pointerleave', () => setGas(false));
-        document.body.appendChild(gasBtn);
+        createPedal('GAS', '#1f8f3a', '#2ebf50', '20px', '110px', this.onGasChange);
+        createPedal('REV', '#d4a017', '#e8b835', '20px', '20px', this.onReverseChange);
+        createPedal('BRAKE', '#d32f2f', '#e53935', '110px', '20px', this.onBrakeChange);
 
+        // Stats Bar
         const statsBar = document.createElement('div');
-        statsBar.style.position = 'absolute';
-        statsBar.style.top = '0';
-        statsBar.style.left = '0';
-        statsBar.style.width = '100%';
-        statsBar.style.padding = '15px';
-        statsBar.style.display = 'flex';
-        statsBar.style.justifyContent = 'center';
-        statsBar.style.gap = '34px';
-        statsBar.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        statsBar.style.color = '#fff';
-        statsBar.style.fontFamily = 'Arial, sans-serif';
-        statsBar.style.fontSize = '23px';
-        statsBar.style.fontWeight = 'bold';
-        statsBar.style.boxSizing = 'border-box';
-
-        this.timeLabel = document.createElement('div');
-        this.scoreLabel = document.createElement('div');
-        this.hitsLabel = document.createElement('div');
-        this.speedLabel = document.createElement('div');
-
-        statsBar.appendChild(this.timeLabel);
-        statsBar.appendChild(this.scoreLabel);
-        statsBar.appendChild(this.hitsLabel);
-        statsBar.appendChild(this.speedLabel);
+        statsBar.style.position = 'absolute'; statsBar.style.top = '0'; statsBar.style.left = '0'; statsBar.style.width = '100%'; statsBar.style.padding = '15px'; statsBar.style.display = 'flex'; statsBar.style.justifyContent = 'center'; statsBar.style.gap = '34px'; statsBar.style.backgroundColor = 'rgba(0, 0, 0, 0.7)'; statsBar.style.color = '#fff'; statsBar.style.fontSize = '23px'; statsBar.style.fontWeight = 'bold';
+        this.timeLabel = document.createElement('div'); this.scoreLabel = document.createElement('div'); this.hitsLabel = document.createElement('div'); this.speedLabel = document.createElement('div');
+        statsBar.append(this.timeLabel, this.scoreLabel, this.hitsLabel, this.speedLabel);
         document.body.appendChild(statsBar);
 
+        this.buffLabel = document.createElement('div');
+        this.buffLabel.style.position = 'absolute'; this.buffLabel.style.top = '65px'; this.buffLabel.style.left = '50%'; this.buffLabel.style.transform = 'translateX(-50%)'; this.buffLabel.style.fontSize = '26px'; this.buffLabel.style.fontWeight = 'bold'; this.buffLabel.style.textShadow = '2px 2px 4px #000';
+        document.body.appendChild(this.buffLabel);
+
+        this.radioLabel = document.createElement('button');
+        this.radioLabel.innerText = '📻 Radio: Loading...';
+        this.radioLabel.style.position = 'absolute'; this.radioLabel.style.top = '78px'; this.radioLabel.style.left = '18px'; this.radioLabel.style.padding = '12px 18px'; this.radioLabel.style.backgroundColor = 'rgba(10, 14, 18, 0.78)'; this.radioLabel.style.color = '#42e66f'; this.radioLabel.style.borderRadius = '8px'; this.radioLabel.style.cursor = 'pointer'; this.radioLabel.style.fontWeight = 'bold';
+        this.radioLabel.onclick = () => { this.radioLabel.style.transform = 'scale(0.95)'; setTimeout(() => this.radioLabel.style.transform = 'scale(1)', 100); this.onRadioNext(); };
+        document.body.appendChild(this.radioLabel);
+
         this.mapCanvas = document.createElement('canvas');
-        this.mapCanvas.width = 190;
-        this.mapCanvas.height = 250;
-        this.mapCanvas.style.position = 'absolute';
-        this.mapCanvas.style.top = '78px';
-        this.mapCanvas.style.right = '18px';
-        this.mapCanvas.style.width = '190px';
-        this.mapCanvas.style.height = '250px';
-        this.mapCanvas.style.backgroundColor = 'rgba(10, 14, 18, 0.78)';
-        this.mapCanvas.style.border = '2px solid rgba(255, 255, 255, 0.75)';
-        this.mapCanvas.style.borderRadius = '8px';
+        this.mapCanvas.width = 190; this.mapCanvas.height = 250; this.mapCanvas.style.position = 'absolute'; this.mapCanvas.style.top = '78px'; this.mapCanvas.style.right = '18px'; this.mapCanvas.style.backgroundColor = 'rgba(10, 14, 18, 0.78)'; this.mapCanvas.style.border = '2px solid rgba(255, 255, 255, 0.75)'; this.mapCanvas.style.borderRadius = '8px';
         this.mapContext = this.mapCanvas.getContext('2d') as CanvasRenderingContext2D;
         document.body.appendChild(this.mapCanvas);
     }
 
-    public updateStats(timeLeft: number, distance: number, hits: number, speed: number) {
-        const minutes = Math.floor(timeLeft / 60);
-        const seconds = Math.floor(timeLeft % 60).toString().padStart(2, '0');
-        const speedKmh = Math.max(0, Math.round(speed * 3.6));
+    public updateRadioName(trackName: string) {
+        this.radioLabel.innerText = `📻 ${trackName} (Click to change)`;
+        this.radioLabel.style.color = trackName === "Radio OFF" ? '#aaa' : '#42e66f';
+    }
 
-        this.timeLabel.innerText = `Time: ${minutes}:${seconds}`;
-        this.scoreLabel.innerText = `Score: ${Math.floor(distance)}`;
+    public updateStats(timeLeft: number, dist: number, hits: number, spd: number, turbo: boolean, shield: boolean) {
+        this.timeLabel.innerText = `Time: ${Math.floor(timeLeft / 60)}:${Math.floor(timeLeft % 60).toString().padStart(2, '0')}`;
+        this.scoreLabel.innerText = `Score: ${Math.floor(dist)}`;
         this.hitsLabel.innerText = `Hits: ${hits}`;
-        this.speedLabel.innerText = `SPD: ${speedKmh} km/h`;
-
+        this.speedLabel.innerText = `SPD: ${Math.max(0, Math.round(spd * 3.6))} km/h`;
         if (timeLeft <= 10) this.timeLabel.style.color = '#ff4444';
+
+        if (turbo && shield) { this.buffLabel.innerText = '🔥 TURBO + SHIELD 🛡️'; this.buffLabel.style.color = '#ffcc00'; }
+        else if (turbo) { this.buffLabel.innerText = '🔥 TURBO ACTIVE! 🔥'; this.buffLabel.style.color = '#00aaff'; }
+        else if (shield) { this.buffLabel.innerText = '🛡️ SHIELD ACTIVE! 🛡️'; this.buffLabel.style.color = '#ffcc00'; }
+        else { this.buffLabel.innerText = ''; }
     }
 
     private loadSavedSettings(): GameSettings {
-        const fallbackRoute = RoadSystem.ROUTE_VARIANTS[0]?.id ?? 'speed-loop';
-        const fallback: GameSettings = {
-            routeId: fallbackRoute,
-            carColor: '#ffffff',
-            bindings: { ...DEFAULT_CONTROL_BINDINGS }
-        };
-
+        const fb: GameSettings = { routeId: 'speed-loop', carModel: AVAILABLE_CARS[0]!.path, carColor: '#ffffff', sfxVolume: 1.0, musicVolume: 1.0, bindings: { ...DEFAULT_CONTROL_BINDINGS } };
         try {
-            const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-            if (!rawSettings) return fallback;
-
-            const parsed = JSON.parse(rawSettings) as Partial<GameSettings>;
-            const routeExists = RoadSystem.ROUTE_VARIANTS.some((route) => route.id === parsed.routeId);
+            const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+            if (!raw) return fb;
+            const p = JSON.parse(raw);
             const bindings = { ...DEFAULT_CONTROL_BINDINGS };
-
-            if (parsed.bindings && typeof parsed.bindings === 'object') {
-                Object.entries(parsed.bindings).forEach(([action, code]) => {
-                    if (isControlAction(action) && typeof code === 'string' && code.length > 0) {
-                        bindings[action] = code;
-                    }
-                });
-            }
-
+            if (p.bindings) Object.entries(p.bindings).forEach(([a, c]) => { if (isControlAction(a) && typeof c === 'string') bindings[a as ControlAction] = c; });
             return {
-                routeId: routeExists && parsed.routeId ? parsed.routeId : fallback.routeId,
-                carColor: typeof parsed.carColor === 'string' ? parsed.carColor : fallback.carColor,
-                bindings
+                routeId: p.routeId || fb.routeId, carModel: p.carModel || fb.carModel, carColor: p.carColor || fb.carColor,
+                sfxVolume: p.sfxVolume ?? fb.sfxVolume, musicVolume: p.musicVolume ?? fb.musicVolume, bindings
             };
-        } catch {
-            return fallback;
-        }
+        } catch { return fb; }
     }
 
-    private saveSettings(settings: GameSettings) {
-        try {
-            window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-        } catch {
-            // Storage can be unavailable in restricted browser contexts; gameplay should still start.
-        }
-    }
+    private saveSettings(s: GameSettings) { try { window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(s)); } catch { } }
 
     private showRouteSelect() {
-        const colorOptions = [
-            '#ffffff',
-            '#e53935',
-            '#1e88e5',
-            '#43a047',
-            '#fdd835',
-            '#8e24aa'
-        ];
-        const actionLabels: Record<ControlAction, string> = {
-            throttle: 'Accelerate',
-            brake: 'Brake',
-            left: 'Turn Left',
-            right: 'Turn Right',
-            camera: 'Camera'
-        };
-        const savedSettings = this.loadSavedSettings();
-        const bindings: ControlBindings = { ...savedSettings.bindings };
-        let selectedRouteId = savedSettings.routeId;
-        let selectedColor = colorOptions.includes(savedSettings.carColor) ? savedSettings.carColor : colorOptions[0] as string;
+        const saved = this.loadSavedSettings();
+        const bindings = { ...saved.bindings };
+        let settings = { ...saved };
         let captureAction: ControlAction | null = null;
-        const bindingButtons = new Map<ControlAction, HTMLButtonElement>();
-        const routeButtons = new Map<string, HTMLButtonElement>();
-        const colorButtons: HTMLButtonElement[] = [];
-
-        const formatKey = (code: string) => code
-            .replace('Key', '')
-            .replace('Arrow', '')
-            .replace('Digit', '')
-            .replace('Numpad', 'Num ');
-
-        const refreshBindingButtons = () => {
-            bindingButtons.forEach((button, action) => {
-                button.innerText = captureAction === action ? 'Press key...' : formatKey(bindings[action]);
-            });
-        };
-
-        const refreshRouteButtons = () => {
-            routeButtons.forEach((button, routeId) => {
-                const selected = routeId === selectedRouteId;
-                button.style.backgroundColor = selected ? '#203a2a' : '#171b20';
-                button.style.borderColor = selected ? '#42e66f' : 'rgba(255, 255, 255, 0.65)';
-            });
-        };
-
-        const refreshColorButtons = () => {
-            colorButtons.forEach((button) => {
-                const selected = button.dataset.color === selectedColor;
-                button.style.outline = selected ? '3px solid #ffffff' : 'none';
-                button.style.transform = selected ? 'scale(1.08)' : 'scale(1)';
-            });
-        };
 
         const overlay = document.createElement('div');
-        overlay.style.position = 'absolute';
-        overlay.style.inset = '0';
-        overlay.style.display = 'flex';
-        overlay.style.flexDirection = 'column';
-        overlay.style.justifyContent = 'center';
-        overlay.style.alignItems = 'center';
-        overlay.style.gap = '18px';
-        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.82)';
-        overlay.style.color = '#fff';
-        overlay.style.fontFamily = 'Arial, sans-serif';
-        overlay.style.zIndex = '900';
+        overlay.style.position = 'absolute'; overlay.style.inset = '0'; overlay.style.display = 'flex'; overlay.style.flexDirection = 'column'; overlay.style.alignItems = 'center'; overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.9)'; overlay.style.color = '#fff'; overlay.style.fontFamily = 'Arial'; overlay.style.zIndex = '900'; overlay.style.overflowY = 'auto'; overlay.style.padding = '40px';
 
-        const title = document.createElement('h1');
-        title.innerText = 'Choose Track';
-        title.style.margin = '0';
-        title.style.fontSize = '54px';
-        title.style.letterSpacing = '0';
-        overlay.appendChild(title);
+        const title = document.createElement('h1'); title.innerText = 'Game Setup'; overlay.appendChild(title);
 
-        const options = document.createElement('div');
-        options.style.display = 'grid';
-        options.style.gridTemplateColumns = 'repeat(3, minmax(180px, 230px))';
-        options.style.gap = '14px';
-        options.style.maxWidth = '760px';
-        options.style.width = 'calc(100% - 40px)';
-
-        RoadSystem.ROUTE_VARIANTS.forEach((route) => {
-            const button = document.createElement('button');
-            button.style.minHeight = '132px';
-            button.style.padding = '16px';
-            button.style.borderRadius = '8px';
-            button.style.border = '1px solid rgba(255, 255, 255, 0.65)';
-            button.style.backgroundColor = '#171b20';
-            button.style.color = '#fff';
-            button.style.cursor = 'pointer';
-            button.style.textAlign = 'left';
-            button.style.fontFamily = 'Arial, sans-serif';
-
-            const name = document.createElement('div');
-            name.innerText = route.name;
-            name.style.fontSize = '22px';
-            name.style.fontWeight = 'bold';
-            name.style.marginBottom = '10px';
-
-            const description = document.createElement('div');
-            description.innerText = route.description;
-            description.style.fontSize = '15px';
-            description.style.color = '#cbd5df';
-            description.style.lineHeight = '1.35';
-
-            button.appendChild(name);
-            button.appendChild(description);
-            button.onclick = () => {
-                selectedRouteId = route.id;
-                refreshRouteButtons();
-            };
-            routeButtons.set(route.id, button);
-            options.appendChild(button);
+        // 1. TRACK SELECT
+        const trackDiv = document.createElement('div'); trackDiv.style.display = 'flex'; trackDiv.style.gap = '10px'; trackDiv.style.marginBottom = '20px';
+        RoadSystem.ROUTE_VARIANTS.forEach(r => {
+            const b = document.createElement('button'); b.innerText = r.name; b.style.padding = '10px'; b.style.cursor = 'pointer';
+            b.style.backgroundColor = settings.routeId === r.id ? '#42e66f' : '#333';
+            b.onclick = () => { settings.routeId = r.id; Array.from(trackDiv.children).forEach((c: any) => c.style.backgroundColor = '#333'); b.style.backgroundColor = '#42e66f'; };
+            trackDiv.appendChild(b);
         });
+        overlay.appendChild(trackDiv);
 
-        overlay.appendChild(options);
-
-        const settingsPanel = document.createElement('div');
-        settingsPanel.style.display = 'grid';
-        settingsPanel.style.gridTemplateColumns = 'minmax(260px, 360px) minmax(260px, 360px)';
-        settingsPanel.style.gap = '14px';
-        settingsPanel.style.width = 'calc(100% - 40px)';
-        settingsPanel.style.maxWidth = '760px';
-
-        const controlsPanel = document.createElement('div');
-        controlsPanel.style.padding = '14px';
-        controlsPanel.style.backgroundColor = 'rgba(12, 16, 20, 0.9)';
-        controlsPanel.style.border = '1px solid rgba(255, 255, 255, 0.35)';
-        controlsPanel.style.borderRadius = '8px';
-
-        const controlsTitle = document.createElement('div');
-        controlsTitle.innerText = 'Controls';
-        controlsTitle.style.fontWeight = 'bold';
-        controlsTitle.style.fontSize = '18px';
-        controlsTitle.style.marginBottom = '10px';
-        controlsPanel.appendChild(controlsTitle);
-
-        (Object.keys(bindings) as ControlAction[]).forEach((action) => {
-            const row = document.createElement('div');
-            row.style.display = 'grid';
-            row.style.gridTemplateColumns = '1fr 110px';
-            row.style.alignItems = 'center';
-            row.style.gap = '10px';
-            row.style.marginBottom = '8px';
-
-            const label = document.createElement('label');
-            label.innerText = actionLabels[action];
-            label.style.color = '#dce4ec';
-
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.style.height = '34px';
-            button.style.borderRadius = '6px';
-            button.style.border = '1px solid rgba(255, 255, 255, 0.55)';
-            button.style.backgroundColor = '#222832';
-            button.style.color = '#fff';
-            button.style.cursor = 'pointer';
-            button.style.fontWeight = 'bold';
-            button.onclick = () => {
-                captureAction = action;
-                refreshBindingButtons();
-            };
-
-            bindingButtons.set(action, button);
-            row.appendChild(label);
-            row.appendChild(button);
-            controlsPanel.appendChild(row);
+        // 2. CAR SELECT
+        const carDiv = document.createElement('div'); carDiv.style.display = 'flex'; carDiv.style.gap = '10px'; carDiv.style.marginBottom = '20px';
+        AVAILABLE_CARS.forEach(c => {
+            const b = document.createElement('button'); b.innerText = c.name; b.style.padding = '10px'; b.style.cursor = 'pointer';
+            b.style.backgroundColor = settings.carModel === c.path ? '#1e88e5' : '#333';
+            b.onclick = () => { settings.carModel = c.path; Array.from(carDiv.children).forEach((ch: any) => ch.style.backgroundColor = '#333'); b.style.backgroundColor = '#1e88e5'; };
+            carDiv.appendChild(b);
         });
+        overlay.appendChild(carDiv);
 
-        const colorPanel = document.createElement('div');
-        colorPanel.style.padding = '14px';
-        colorPanel.style.backgroundColor = 'rgba(12, 16, 20, 0.9)';
-        colorPanel.style.border = '1px solid rgba(255, 255, 255, 0.35)';
-        colorPanel.style.borderRadius = '8px';
-
-        const colorTitle = document.createElement('div');
-        colorTitle.innerText = 'Car Color';
-        colorTitle.style.fontWeight = 'bold';
-        colorTitle.style.fontSize = '18px';
-        colorTitle.style.marginBottom = '12px';
-        colorPanel.appendChild(colorTitle);
-
-        const swatches = document.createElement('div');
-        swatches.style.display = 'flex';
-        swatches.style.flexWrap = 'wrap';
-        swatches.style.gap = '10px';
-
-        colorOptions.forEach((color) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.dataset.color = color;
-            button.style.width = '42px';
-            button.style.height = '42px';
-            button.style.borderRadius = '50%';
-            button.style.border = '2px solid rgba(255, 255, 255, 0.8)';
-            button.style.backgroundColor = color;
-            button.style.cursor = 'pointer';
-            button.onclick = () => {
-                selectedColor = color;
-                refreshColorButtons();
-            };
-            colorButtons.push(button);
-            swatches.appendChild(button);
+        // 3. COLOR SELECT
+        const colorDiv = document.createElement('div'); colorDiv.style.display = 'flex'; colorDiv.style.gap = '10px'; colorDiv.style.marginBottom = '20px';
+        ['#ffffff', '#e53935', '#1e88e5', '#43a047', '#fdd835', '#8e24aa', '#111111'].forEach(c => {
+            const b = document.createElement('button'); b.style.width = '40px'; b.style.height = '40px'; b.style.backgroundColor = c; b.style.borderRadius = '50%'; b.style.cursor = 'pointer';
+            b.style.border = settings.carColor === c ? '3px solid #fff' : 'none';
+            b.onclick = () => { settings.carColor = c; Array.from(colorDiv.children).forEach((ch: any) => ch.style.border = 'none'); b.style.border = '3px solid #fff'; };
+            colorDiv.appendChild(b);
         });
+        overlay.appendChild(colorDiv);
 
-        colorPanel.appendChild(swatches);
-        settingsPanel.appendChild(controlsPanel);
-        settingsPanel.appendChild(colorPanel);
-        overlay.appendChild(settingsPanel);
+        // 4. AUDIO SLIDERS
+        const audioDiv = document.createElement('div'); audioDiv.style.marginBottom = '20px'; audioDiv.style.width = '300px';
+        const createSlider = (label: string, val: number, onChange: (v: number) => void) => {
+            const wrap = document.createElement('div'); wrap.style.display = 'flex'; wrap.style.justifyContent = 'space-between'; wrap.style.marginBottom = '10px';
+            const l = document.createElement('label'); l.innerText = label;
+            const inp = document.createElement('input'); inp.type = 'range'; inp.min = '0'; inp.max = '1'; inp.step = '0.05'; inp.value = val.toString();
+            inp.oninput = (e) => onChange(parseFloat((e.target as HTMLInputElement).value));
+            wrap.append(l, inp); return wrap;
+        };
+        audioDiv.appendChild(createSlider('SFX Volume', settings.sfxVolume, v => settings.sfxVolume = v));
+        audioDiv.appendChild(createSlider('Radio Music', settings.musicVolume, v => settings.musicVolume = v));
+        overlay.appendChild(audioDiv);
 
-        const startButton = document.createElement('button');
-        startButton.innerText = 'Start Race';
-        startButton.style.padding = '14px 34px';
-        startButton.style.borderRadius = '8px';
-        startButton.style.border = 'none';
-        startButton.style.backgroundColor = '#42e66f';
-        startButton.style.color = '#07120a';
-        startButton.style.fontSize = '22px';
-        startButton.style.fontWeight = 'bold';
-        startButton.style.cursor = 'pointer';
-        startButton.onclick = () => {
-            const settings = {
-                routeId: selectedRouteId,
-                carColor: selectedColor,
-                bindings: { ...bindings }
-            };
+        // 5. CONTROLS
+        const controlsDiv = document.createElement('div'); controlsDiv.style.display = 'grid'; controlsDiv.style.gridTemplateColumns = '1fr 1fr'; controlsDiv.style.gap = '10px'; controlsDiv.style.marginBottom = '30px';
+        const actionLabels: Record<ControlAction, string> = { throttle: 'Gas', reverse: 'Reverse', brake: 'Brake', left: 'Left', right: 'Right', camera: 'Camera', radio: 'Radio' };
+
+        Object.keys(bindings).forEach(a => {
+            const action = a as ControlAction;
+            const btn = document.createElement('button'); btn.innerText = `${actionLabels[action]}: ${bindings[action]}`; btn.style.padding = '8px';
+            btn.onclick = () => { captureAction = action; btn.innerText = 'Press Key...'; };
+            window.addEventListener('keydown', (e) => {
+                if (captureAction === action) { e.preventDefault(); bindings[action] = e.code; btn.innerText = `${actionLabels[action]}: ${e.code}`; captureAction = null; }
+            });
+            controlsDiv.appendChild(btn);
+        });
+        overlay.appendChild(controlsDiv);
+
+        // START BUTTON
+        const startBtn = document.createElement('button'); startBtn.innerText = 'START RACE'; startBtn.style.padding = '15px 40px'; startBtn.style.fontSize = '24px'; startBtn.style.backgroundColor = '#42e66f'; startBtn.style.cursor = 'pointer';
+        startBtn.onclick = () => {
+            settings.bindings = bindings;
             this.saveSettings(settings);
             this.onStart(settings);
-            window.removeEventListener('keydown', captureKey, true);
             overlay.remove();
         };
-        overlay.appendChild(startButton);
-
-        const captureKey = (event: KeyboardEvent) => {
-            if (!captureAction) return;
-            event.preventDefault();
-            event.stopPropagation();
-            bindings[captureAction] = event.code;
-            captureAction = null;
-            refreshBindingButtons();
-        };
-        window.addEventListener('keydown', captureKey, true);
-
-        refreshRouteButtons();
-        refreshBindingButtons();
-        refreshColorButtons();
+        overlay.appendChild(startBtn);
         document.body.appendChild(overlay);
     }
 
+    // ... Keep map function
     public updateMap(progressZ: number, carWorldX: number, _carWorldZ: number) {
+        // [KEEP YOUR EXACT updateMap FUNCTION CODE HERE]
         const ctx = this.mapContext;
         const width = this.mapCanvas.width;
         const height = this.mapCanvas.height;
@@ -490,6 +308,7 @@ export class UI {
     }
 
     public showGameOver(finalScore: number, finalHits: number, titleText = 'TIME IS UP!') {
+        // [KEEP YOUR EXACT showGameOver FUNCTION CODE HERE]
         const overlay = document.createElement('div');
         overlay.style.position = 'absolute';
         overlay.style.top = '0';
